@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="vi" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- SEO Primary Meta Tags -->
+    <title>QR Generator – Tạo mã QR miễn phí</title>
+    <meta name="title" content="QR Generator – Tạo mã QR miễn phí" />
+    <meta name="description" content="Tạo mã QR miễn phí, không quảng cáo, không tracking và không cần đăng ký. Static QR Code mã hóa trực tiếp dữ liệu, bảo mật 100% trên trình duyệt." />
+    <meta name="keywords" content="tạo mã qr, qr code generator, qr miễn phí, static qr, không quảng cáo, tạo qr wifi, tạo qr url, tạo qr email" />
+    <meta name="author" content="QR Generator" />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#3b82f6" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://qr-generator.local/" />
+    <meta property="og:title" content="QR Generator – Tạo mã QR miễn phí" />
+    <meta property="og:description" content="Tạo mã QR miễn phí, không quảng cáo, không tracking và không cần đăng ký. Static QR Code trực tiếp trên trình duyệt." />
+    <meta property="og:image" content="/icon-512.png" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:title" content="QR Generator – Tạo mã QR miễn phí" />
+    <meta property="twitter:description" content="Tạo mã QR miễn phí, không quảng cáo, không tracking và không cần đăng ký." />
+    <meta property="twitter:image" content="/icon-512.png" />
+
+    <!-- Favicon & PWA -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Google Fonts: Inter & Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  </head>
+  <body class="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200 antialiased font-sans selection:bg-blue-500 selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Register service worker if supported
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {
+            // SW registration failed, silent fail for local preview
+          });
+        });
+      }
+    </script>
+  </body>
+</html>

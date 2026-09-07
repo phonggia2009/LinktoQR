@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://qr-generator.local/sitemap.xml

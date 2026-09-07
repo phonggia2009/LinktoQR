@@ -248,45 +248,48 @@ export const AppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
-      {/* Header */}
-      <Header
-        theme={theme}
-        onThemeChange={handleThemeChange}
-        onScrollToGenerator={handleScrollToGenerator}
-      />
-
-      {/* Main Content Area */}
-      <main className="flex-1">
-        <Hero onStartClick={handleScrollToGenerator} />
-
-        <div id="qr-generator-panel">
-          <QRGenerator
-            dataState={dataState}
-            onDataStateChange={setDataState}
-            config={config}
-            onConfigChange={setConfig}
-            onSaveHistory={handleSaveHistory}
-            onPrint={handlePrint}
-          />
-        </div>
-
-        <QRHistory
-          items={history}
-          onSelect={handleSelectHistory}
-          onRename={handleRenameHistory}
-          onDelete={handleDeleteHistory}
-          onClearAll={handleClearHistory}
+      {/* Regular website content (hidden during print) */}
+      <div className="no-print flex-1 flex flex-col">
+        {/* Header */}
+        <Header
+          theme={theme}
+          onThemeChange={handleThemeChange}
+          onScrollToGenerator={handleScrollToGenerator}
         />
 
-        <GuideSection />
+        {/* Main Content Area */}
+        <main className="flex-1">
+          <Hero onStartClick={handleScrollToGenerator} />
 
-        <PrivacySection />
+          <div id="qr-generator-panel">
+            <QRGenerator
+              dataState={dataState}
+              onDataStateChange={setDataState}
+              config={config}
+              onConfigChange={setConfig}
+              onSaveHistory={handleSaveHistory}
+              onPrint={handlePrint}
+            />
+          </div>
 
-        <FAQSection />
-      </main>
+          <QRHistory
+            items={history}
+            onSelect={handleSelectHistory}
+            onRename={handleRenameHistory}
+            onDelete={handleDeleteHistory}
+            onClearAll={handleClearHistory}
+          />
 
-      {/* Footer */}
-      <Footer />
+          <GuideSection />
+
+          <PrivacySection />
+
+          <FAQSection />
+        </main>
+
+        {/* Footer */}
+        <Footer />
+      </div>
 
       {/* Print View Component (only shown when window.print() triggers) */}
       <PrintView

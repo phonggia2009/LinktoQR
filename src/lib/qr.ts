@@ -4,7 +4,8 @@ import { buildWifiPayload } from './wifi';
 import { normalizeUrl } from './validation';
 
 /**
- * Generate standard raw payload string based on QR data state
+ * Generate standard raw static payload string based on QR data state.
+ * 100% Client-side. Direct encoding without any intermediary server, tracking, or redirect.
  */
 export function generatePayload(data: QRDataState): string {
   switch (data.type) {
@@ -36,7 +37,7 @@ export function generatePayload(data: QRDataState): string {
 }
 
 /**
- * Get display title / summary for a given payload
+ * Get display title and concise summary for a given payload
  */
 export function getPayloadSummary(data: QRDataState): { title: string; summary: string } {
   switch (data.type) {
@@ -73,7 +74,7 @@ export function getPayloadSummary(data: QRDataState): { title: string; summary: 
 }
 
 /**
- * Helper to load an image element from a URL / Data URI
+ * Helper to load an image element from a URL / Data URI safely
  */
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -95,7 +96,6 @@ export async function renderQRToCanvas(
   renderSize?: number
 ): Promise<void> {
   if (!payload) {
-    // Clear canvas
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -117,7 +117,15 @@ export async function renderQRToCanvas(
     },
   });
 
-  // If logo is enabled and provided, draw it in the center
+  // Đặt lại style để canvas luôn co giãn 100% theo container, không bị vỡ layout trên mobile
+  canvas.style.width = '100%';
+  canvas.style.height = '100%';
+  canvas.style.maxWidth = '100%';
+  canvas.style.maxHeight = '100%';
+  canvas.style.objectFit = 'contain';
+  canvas.style.aspectRatio = '1 / 1';
+
+  // If logo is enabled and provided, draw it centered with rounded background badge
   if (config.includeLogo && config.logoUrl) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -131,7 +139,7 @@ export async function renderQRToCanvas(
       const logoSize = Math.floor(canvasWidth * config.logoSizeRatio);
       const padding = Math.max(4, Math.floor(logoSize * 0.12));
       const badgeSize = logoSize + padding * 2;
-      const cornerRadius = Math.floor(badgeSize * 0.2);
+      const cornerRadius = Math.floor(badgeSize * 0.22);
 
       const centerX = (canvasWidth - badgeSize) / 2;
       const centerY = (canvasHeight - badgeSize) / 2;
@@ -140,21 +148,24 @@ export async function renderQRToCanvas(
 
       // Draw rounded background badge shield behind the logo
       ctx.beginPath();
-      ctx.roundRect(centerX, centerY, badgeSize, badgeSize, cornerRadius);
+      if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(centerX, centerY, badgeSize, badgeSize, cornerRadius);
+      } else {
+        ctx.rect(centerX, centerY, badgeSize, badgeSize);
+      }
       ctx.fillStyle = config.bgColor;
       ctx.fill();
 
       // Subtle border on the badge
       ctx.lineWidth = Math.max(1, Math.floor(badgeSize * 0.03));
-      ctx.strokeStyle = config.fgColor + '22'; // 15% opacity of foreground
+      ctx.strokeStyle = config.fgColor + '25';
       ctx.stroke();
 
-      // Draw the logo inside
+      // Draw the logo inside preserving aspect ratio
       const logoX = centerX + padding;
       const logoY = centerY + padding;
 
-      // Maintain aspect ratio
-      const aspect = logoImg.width / logoImg.height;
+      const aspect = (logoImg.naturalWidth || logoImg.width) / (logoImg.naturalHeight || logoImg.height);
       let drawW = logoSize;
       let drawH = logoSize;
       let drawX = logoX;
@@ -177,7 +188,7 @@ export async function renderQRToCanvas(
 }
 
 /**
- * Generate full-resolution PNG Blob
+ * Generate full-resolution PNG Blob at specified resolution
  */
 export async function generateQRPngBlob(
   payload: string,
@@ -221,10 +232,9 @@ export async function generateQRSVG(
     },
   });
 
-  // If logo is enabled and present, embed it inside SVG
+  // If logo is enabled and present, embed it inside SVG safely
   if (config.includeLogo && config.logoUrl) {
     try {
-      // Find viewBox in svg
       const viewBoxMatch = svgString.match(/viewBox="([^"]+)"/);
       if (viewBoxMatch) {
         const parts = viewBoxMatch[1].split(' ').map(Number);
@@ -234,7 +244,7 @@ export async function generateQRSVG(
         const logoSize = width * config.logoSizeRatio;
         const padding = logoSize * 0.12;
         const badgeSize = logoSize + padding * 2;
-        const cornerRadius = badgeSize * 0.2;
+        const cornerRadius = badgeSize * 0.22;
 
         const centerX = (width - badgeSize) / 2;
         const centerY = (height - badgeSize) / 2;
@@ -245,8 +255,8 @@ export async function generateQRSVG(
         const logoElement = `
   <!-- Logo Badge Centerpiece -->
   <g id="qr-logo-badge">
-    <rect x="${centerX}" y="${centerY}" width="${badgeSize}" height="${badgeSize}" rx="${cornerRadius}" fill="${config.bgColor}" stroke="${config.fgColor}" stroke-opacity="0.15" stroke-width="${badgeSize * 0.03}" />
-    <image href="${config.logoUrl}" x="${logoX}" y="${logoY}" width="${logoSize}" height="${logoSize}" preserveAspectRatio="xMidYMid meet" />
+    <rect x="${centerX.toFixed(2)}" y="${centerY.toFixed(2)}" width="${badgeSize.toFixed(2)}" height="${badgeSize.toFixed(2)}" rx="${cornerRadius.toFixed(2)}" fill="${config.bgColor}" stroke="${config.fgColor}" stroke-opacity="0.15" stroke-width="${(badgeSize * 0.03).toFixed(2)}" />
+    <image href="${config.logoUrl}" x="${logoX.toFixed(2)}" y="${logoY.toFixed(2)}" width="${logoSize.toFixed(2)}" height="${logoSize.toFixed(2)}" preserveAspectRatio="xMidYMid meet" />
   </g>
 </svg>`;
 
@@ -264,7 +274,7 @@ export async function generateQRSVG(
  * Copy image Blob to clipboard
  */
 export async function copyImageBlobToClipboard(blob: Blob): Promise<boolean> {
-  if (!navigator.clipboard || !window.ClipboardItem) {
+  if (!navigator.clipboard || typeof window.ClipboardItem === 'undefined') {
     return false;
   }
 
@@ -303,5 +313,48 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
     return successful;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Trigger Web Share API if supported
+ */
+export async function shareQRCode(
+  title: string,
+  text: string,
+  url?: string,
+  blob?: Blob
+): Promise<{ success: boolean; isSupported: boolean }> {
+  if (!navigator.share) {
+    return { success: false, isSupported: false };
+  }
+
+  try {
+    const shareData: ShareData = {
+      title,
+      text,
+    };
+
+    if (url && /^https?:\/\//i.test(url)) {
+      shareData.url = url;
+    }
+
+    // Try sharing with file if supported
+    if (blob && navigator.canShare) {
+      const file = new File([blob], 'qr-code.png', { type: 'image/png' });
+      if (navigator.canShare({ files: [file] })) {
+        shareData.files = [file];
+      }
+    }
+
+    await navigator.share(shareData);
+    return { success: true, isSupported: true };
+  } catch (err) {
+    // AbortError is normal when user cancels dialog
+    if ((err as Error).name === 'AbortError') {
+      return { success: false, isSupported: true };
+    }
+    console.warn('Web Share failed:', err);
+    return { success: false, isSupported: true };
   }
 }

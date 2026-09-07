@@ -64,6 +64,12 @@ export const Header: React.FC<HeaderProps> = ({
             <ShieldCheck className="w-4 h-4 text-emerald-500" />
             Quyền riêng tư
           </a>
+          <a
+            href="#faq"
+            className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          >
+            FAQ
+          </a>
         </nav>
 
         {/* Right Actions: Theme Selector + CTA */}
@@ -178,6 +184,13 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <ShieldCheck className="w-4 h-4 text-emerald-500" />
               Quyền riêng tư & Bảo mật
+            </a>
+            <a
+              href="#faq"
+              onClick={() => setMobileMenuOpen(false)}
+              className="px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              Câu hỏi thường gặp (FAQ)
             </a>
           </nav>
 

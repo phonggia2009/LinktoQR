@@ -1,87 +1,130 @@
 import React, { useState } from 'react';
-import { Download, Copy, Printer, Check, Image as ImageIcon, Code2, Loader2 } from 'lucide-react';
-import { QRDesignConfig } from '../types/qr';
+import { Download, Copy, Printer, Check, Image as ImageIcon, Code2, Loader2, Share2, Sparkles } from 'lucide-react';
+import { QRDesignConfig, QRDataState } from '../types/qr';
 import {
   generateQRPngBlob,
   generateQRSVG,
   copyImageBlobToClipboard,
   copyTextToClipboard,
+  shareQRCode,
 } from '../lib/qr';
+import { generateSmartFilename } from '../lib/validation';
 import { useToast } from './Toast';
 
 interface DownloadButtonsProps {
   payload: string;
+  dataState: QRDataState;
   config: QRDesignConfig;
   onPrint: () => void;
 }
 
 export const DownloadButtons: React.FC<DownloadButtonsProps> = ({
   payload,
+  dataState,
   config,
   onPrint,
 }) => {
   const { showToast } = useToast();
-  const [isDownloadingPng, setIsDownloadingPng] = useState(false);
-  const [isDownloadingSvg, setIsDownloadingSvg] = useState(false);
+  const [downloadingType, setDownloadingType] = useState<string | null>(null);
   const [isCopyingImage, setIsCopyingImage] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
 
   const hasPayload = !!payload.trim();
 
-  // 1. Download PNG
-  const handleDownloadPng = async () => {
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Đã tải QR thành công.', 'success');
+  };
+
+  // 1. Download PNG 1024px
+  const handleDownloadPngStandard = async () => {
     if (!hasPayload) {
       showToast('Vui lòng nhập nội dung trước khi tải về', 'warning');
       return;
     }
     try {
-      setIsDownloadingPng(true);
-      const blob = await generateQRPngBlob(payload, config, config.size);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'qr-code.png';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showToast(`Đã tải xuống qr-code.png (${config.size}×${config.size}px)`, 'success');
+      setDownloadingType('png-standard');
+      const blob = await generateQRPngBlob(payload, config, 1024);
+      const filename = generateSmartFilename(dataState, 'png');
+      triggerDownload(blob, filename);
     } catch (err) {
       console.error('Error downloading PNG:', err);
       showToast('Có lỗi xảy ra khi tạo file PNG', 'error');
     } finally {
-      setIsDownloadingPng(false);
+      setDownloadingType(null);
     }
   };
 
-  // 2. Download SVG
+  // 2. Download PNG HD 2048px
+  const handleDownloadPngHD = async () => {
+    if (!hasPayload) {
+      showToast('Vui lòng nhập nội dung trước khi tải về', 'warning');
+      return;
+    }
+    try {
+      setDownloadingType('png-hd');
+      const blob = await generateQRPngBlob(payload, config, 2048);
+      const filename = generateSmartFilename(dataState, 'png').replace(/\.png$/, '-hd.png');
+      triggerDownload(blob, filename);
+    } catch (err) {
+      console.error('Error downloading PNG HD:', err);
+      showToast('Có lỗi xảy ra khi tạo file PNG HD', 'error');
+    } finally {
+      setDownloadingType(null);
+    }
+  };
+
+  // 3. Download Vector SVG
   const handleDownloadSvg = async () => {
     if (!hasPayload) {
       showToast('Vui lòng nhập nội dung trước khi tải về', 'warning');
       return;
     }
     try {
-      setIsDownloadingSvg(true);
+      setDownloadingType('svg');
       const svgContent = await generateQRSVG(payload, config);
       const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'qr-code.svg';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showToast('Đã tải xuống qr-code.svg (Vector chuẩn in ấn khổ lớn)', 'success');
+      const filename = generateSmartFilename(dataState, 'svg');
+      triggerDownload(blob, filename);
     } catch (err) {
       console.error('Error downloading SVG:', err);
       showToast('Có lỗi xảy ra khi tạo file SVG', 'error');
     } finally {
-      setIsDownloadingSvg(false);
+      setDownloadingType(null);
     }
   };
 
-  // 3. Copy QR Image
+  // 4. Share QR (Web Share API)
+  const handleShare = async () => {
+    if (!hasPayload) {
+      showToast('Chưa có nội dung để chia sẻ', 'warning');
+      return;
+    }
+
+    try {
+      const blob = await generateQRPngBlob(payload, config, 1024);
+      const result = await shareQRCode('Mã QR của tôi', payload, payload, blob);
+
+      if (result.success) {
+        showToast('Đã chia sẻ mã QR thành công', 'success');
+      } else if (!result.isSupported) {
+        // Fallback: Copy link/payload
+        await copyTextToClipboard(payload);
+        showToast('Trình duyệt không hỗ trợ chia sẻ trực tiếp. Đã sao chép nội dung!', 'info');
+      }
+    } catch {
+      showToast('Không thể chia sẻ mã QR', 'error');
+    }
+  };
+
+  // 5. Copy QR Image
   const handleCopyImage = async () => {
     if (!hasPayload) {
       showToast('Vui lòng nhập nội dung trước khi sao chép', 'warning');
@@ -89,13 +132,12 @@ export const DownloadButtons: React.FC<DownloadButtonsProps> = ({
     }
     try {
       setIsCopyingImage(true);
-      // Copy at 512px for standard clipboard usage
       const blob = await generateQRPngBlob(payload, config, 512);
       const success = await copyImageBlobToClipboard(blob);
       if (success) {
-        showToast('Đã sao chép ảnh mã QR vào bộ nhớ đệm (Clipboard)', 'success');
+        showToast('Đã sao chép ảnh mã QR vào Clipboard', 'success');
       } else {
-        showToast('Trình duyệt của bạn chưa cấp quyền copy ảnh trực tiếp, hãy dùng nút Tải PNG', 'warning');
+        showToast('Trình duyệt chưa hỗ trợ copy ảnh, hãy dùng nút Tải PNG', 'warning');
       }
     } catch (err) {
       console.error('Error copying image:', err);
@@ -105,7 +147,7 @@ export const DownloadButtons: React.FC<DownloadButtonsProps> = ({
     }
   };
 
-  // 4. Copy raw payload
+  // 6. Copy Text Payload
   const handleCopyText = async () => {
     if (!hasPayload) {
       showToast('Chưa có nội dung để sao chép', 'warning');
@@ -122,79 +164,131 @@ export const DownloadButtons: React.FC<DownloadButtonsProps> = ({
   };
 
   return (
-    <div className="space-y-3 pt-2">
-      {/* Primary Download Buttons */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+    <div className="space-y-3 pt-1">
+      {/* Top Section Header */}
+      <div className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+        Download Center
+      </div>
+
+      {/* Primary Download Buttons Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {/* PNG Standard */}
         <button
           type="button"
-          onClick={handleDownloadPng}
-          disabled={!hasPayload || isDownloadingPng}
-          className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:pointer-events-none text-white font-semibold text-sm rounded-xl shadow-xs transition-all active:scale-98 cursor-pointer"
+          onClick={handleDownloadPngStandard}
+          disabled={!hasPayload || downloadingType !== null}
+          className="inline-flex items-center justify-between px-3.5 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:pointer-events-none text-white font-semibold text-xs rounded-xl shadow-xs transition-all active:scale-98 cursor-pointer"
+          title="Tải ảnh định dạng PNG kích thước 1024x1024"
         >
-          {isDownloadingPng ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Download className="w-4 h-4" />
-          )}
-          <span>Tải PNG ({config.size}px)</span>
+          <div className="flex items-center gap-2">
+            {downloadingType === 'png-standard' ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            <span>Tải PNG</span>
+          </div>
+          <span className="text-[10px] bg-blue-700/80 px-1.5 py-0.5 rounded font-mono">1024px</span>
         </button>
 
+        {/* PNG HD */}
+        <button
+          type="button"
+          onClick={handleDownloadPngHD}
+          disabled={!hasPayload || downloadingType !== null}
+          className="inline-flex items-center justify-between px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 disabled:pointer-events-none text-white font-semibold text-xs rounded-xl shadow-xs transition-all active:scale-98 cursor-pointer"
+          title="Tải ảnh định dạng PNG kích thước siêu nét 2048x2048"
+        >
+          <div className="flex items-center gap-2">
+            {downloadingType === 'png-hd' ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4 text-amber-300" />
+            )}
+            <span>Tải PNG HD</span>
+          </div>
+          <span className="text-[10px] bg-indigo-700/80 px-1.5 py-0.5 rounded font-mono">2048px</span>
+        </button>
+
+        {/* SVG Vector */}
         <button
           type="button"
           onClick={handleDownloadSvg}
-          disabled={!hasPayload || isDownloadingSvg}
-          className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 active:bg-slate-950 disabled:opacity-50 disabled:pointer-events-none text-white font-semibold text-sm rounded-xl shadow-xs transition-all active:scale-98 cursor-pointer"
+          disabled={!hasPayload || downloadingType !== null}
+          className="inline-flex items-center justify-between px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 active:bg-slate-950 disabled:opacity-50 disabled:pointer-events-none text-white font-semibold text-xs rounded-xl shadow-xs transition-all active:scale-98 cursor-pointer"
+          title="Tải file vector SVG phóng to vô hạn cho thiết kế in ấn"
         >
-          {isDownloadingSvg ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Code2 className="w-4 h-4 text-emerald-400" />
-          )}
-          <span>Tải SVG (Vector)</span>
+          <div className="flex items-center gap-2">
+            {downloadingType === 'svg' ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Code2 className="w-4 h-4 text-emerald-400" />
+            )}
+            <span>Tải SVG Vector</span>
+          </div>
+          <span className="text-[10px] bg-slate-800 dark:bg-slate-700 px-1.5 py-0.5 rounded font-mono">Vector</span>
+        </button>
+
+        {/* Print / High DPI */}
+        <button
+          type="button"
+          onClick={onPrint}
+          disabled={!hasPayload}
+          className="inline-flex items-center justify-between px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 dark:bg-slate-800/80 dark:hover:bg-slate-700 disabled:opacity-50 disabled:pointer-events-none text-white font-semibold text-xs rounded-xl shadow-xs transition-all active:scale-98 cursor-pointer"
+          title="In mã QR chuẩn 300 DPI qua máy in"
+        >
+          <div className="flex items-center gap-2">
+            <Printer className="w-4 h-4 text-amber-400" />
+            <span>In ấn (Print)</span>
+          </div>
+          <span className="text-[10px] bg-slate-700 px-1.5 py-0.5 rounded font-mono">300 DPI</span>
         </button>
       </div>
 
-      {/* Secondary Actions: Copy & Print */}
-      <div className="grid grid-cols-3 gap-2">
+      {/* Secondary Actions: Share, Copy Image, Copy Text */}
+      <div className="grid grid-cols-3 gap-1.5 pt-1">
+        <button
+          type="button"
+          onClick={handleShare}
+          disabled={!hasPayload}
+          className="inline-flex items-center justify-center gap-1.5 px-2 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/80 disabled:opacity-50 disabled:pointer-events-none text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl transition-all cursor-pointer"
+          title="Chia sẻ mã QR qua mạng xã hội hoặc ứng dụng"
+          aria-label="Chia sẻ mã QR"
+        >
+          <Share2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+          <span className="truncate">Chia sẻ</span>
+        </button>
+
         <button
           type="button"
           onClick={handleCopyImage}
           disabled={!hasPayload || isCopyingImage}
-          className="inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/80 disabled:opacity-50 disabled:pointer-events-none text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl transition-all cursor-pointer"
-          title="Sao chép ảnh mã QR vào clipboard"
+          className="inline-flex items-center justify-center gap-1.5 px-2 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/80 disabled:opacity-50 disabled:pointer-events-none text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl transition-all cursor-pointer"
+          title="Sao chép ảnh mã QR vào Clipboard"
+          aria-label="Sao chép ảnh mã QR"
         >
           {isCopyingImage ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
           ) : (
-            <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
+            <ImageIcon className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
           )}
-          <span className="truncate">Sao chép QR</span>
+          <span className="truncate">Copy ảnh</span>
         </button>
 
         <button
           type="button"
           onClick={handleCopyText}
           disabled={!hasPayload}
-          className="inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/80 disabled:opacity-50 disabled:pointer-events-none text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl transition-all cursor-pointer"
-          title="Sao chép nội dung đã mã hóa"
+          className="inline-flex items-center justify-center gap-1.5 px-2 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/80 disabled:opacity-50 disabled:pointer-events-none text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl transition-all cursor-pointer"
+          title="Sao chép chuỗi mã hóa"
+          aria-label="Sao chép chuỗi mã hóa"
         >
           {copiedText ? (
             <Check className="w-3.5 h-3.5 text-emerald-600" />
           ) : (
-            <Copy className="w-3.5 h-3.5 text-slate-500" />
+            <Copy className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
           )}
-          <span className="truncate">Sao chép link</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={onPrint}
-          disabled={!hasPayload}
-          className="inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/80 disabled:opacity-50 disabled:pointer-events-none text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl transition-all cursor-pointer"
-          title="In mã QR (mở hộp thoại in trình duyệt)"
-        >
-          <Printer className="w-3.5 h-3.5 text-indigo-600" />
-          <span className="truncate">In mã QR</span>
+          <span className="truncate">Copy link</span>
         </button>
       </div>
     </div>

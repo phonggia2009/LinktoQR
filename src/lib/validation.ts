@@ -1,3 +1,5 @@
+import { QRDataState, ExportedQRConfig, QRType, QRDesignConfig } from '../types/qr';
+
 export interface ValidationResult {
   isValid: boolean;
   message?: string;
@@ -14,6 +16,14 @@ export function validateUrl(url: string): ValidationResult {
     return { isValid: false, message: 'Vui lòng nhập địa chỉ URL' };
   }
 
+  // Safety length check (QR Code max ~2953 bytes, keep within reasonable limit)
+  if (trimmed.length > 2048) {
+    return {
+      isValid: false,
+      message: 'Địa chỉ URL quá dài (> 2048 ký tự). Vui lòng rút ngắn nội dung.',
+    };
+  }
+
   // Auto-prepend check
   let normalized = trimmed;
   if (!/^https?:\/\//i.test(trimmed)) {
@@ -26,7 +36,7 @@ export function validateUrl(url: string): ValidationResult {
     if (!parsed.hostname || (!parsed.hostname.includes('.') && parsed.hostname !== 'localhost')) {
       return {
         isValid: false,
-        message: 'Tên miền không hợp lệ (ví dụ: example.com hoặc https://google.com)'
+        message: 'Tên miền không hợp lệ (ví dụ: example.com hoặc https://google.com)',
       };
     }
 
@@ -34,7 +44,7 @@ export function validateUrl(url: string): ValidationResult {
       return {
         isValid: true,
         suggestion: normalized,
-        message: 'Đã tự động bổ sung tiền tố https://'
+        message: 'Đã tự động bổ sung tiền tố https://',
       };
     }
 
@@ -42,7 +52,7 @@ export function validateUrl(url: string): ValidationResult {
   } catch {
     return {
       isValid: false,
-      message: 'Địa chỉ URL không hợp lệ. Vui lòng kiểm tra lại cấu trúc link.'
+      message: 'Địa chỉ URL không hợp lệ. Vui lòng kiểm tra lại cấu trúc link.',
     };
   }
 }
@@ -108,4 +118,184 @@ export function validateWifi(ssid: string, password: string, encryption: string)
   }
 
   return { isValid: true };
+}
+
+/**
+ * Sanitize filename: remove illegal filesystem chars, normalize whitespace to dashes
+ */
+export function sanitizeFilename(input: string, fallback = 'qr-code'): string {
+  if (!input) return fallback;
+
+  let cleaned = input
+    .trim()
+    .toLowerCase()
+    // Replace characters not allowed in filenames
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '')
+    // Replace spaces and consecutive dots/hyphens with a single dash
+    .replace(/[\s_.]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  if (!cleaned) {
+    return fallback;
+  }
+
+  // Limit filename length to 50 characters
+  return cleaned.slice(0, 50);
+}
+
+/**
+ * Automatically generate a smart filename based on data state
+ * Example: https://sondong-story-map.vercel.app/ -> sondong-story-map-qr.png
+ */
+export function generateSmartFilename(dataState: QRDataState, extension = 'png'): string {
+  const ext = extension.startsWith('.') ? extension.slice(1) : extension;
+
+  switch (dataState.type) {
+    case 'url': {
+      try {
+        const normalized = normalizeUrl(dataState.url.url);
+        const parsed = new URL(normalized);
+        let host = parsed.hostname.replace(/^www\./, '');
+        const pathSegments = parsed.pathname.split('/').filter(Boolean);
+        
+        let name = '';
+        if (pathSegments.length > 0) {
+          name = pathSegments[pathSegments.length - 1];
+        } else {
+          // Extract primary name from hostname (e.g. sondong-story-map.vercel.app -> sondong-story-map)
+          const parts = host.split('.');
+          if (parts.length >= 2) {
+            name = parts[0];
+          } else {
+            name = host;
+          }
+        }
+        return `${sanitizeFilename(name)}-qr.${ext}`;
+      } catch {
+        return `qr-code.${ext}`;
+      }
+    }
+    case 'wifi': {
+      const ssid = dataState.wifi.ssid.trim();
+      const base = ssid ? `wifi-${ssid}` : 'wifi';
+      return `${sanitizeFilename(base)}-qr.${ext}`;
+    }
+    case 'email': {
+      const email = dataState.email.email.trim();
+      const user = email ? email.split('@')[0] : 'email';
+      return `${sanitizeFilename(`email-${user}`)}-qr.${ext}`;
+    }
+    case 'phone': {
+      const phone = dataState.phone.phone.trim().replace(/\D/g, '');
+      const base = phone ? `phone-${phone}` : 'phone';
+      return `${sanitizeFilename(base)}-qr.${ext}`;
+    }
+    case 'text': {
+      const firstWords = dataState.text.text.trim().slice(0, 20);
+      const base = firstWords ? firstWords : 'text';
+      return `${sanitizeFilename(base)}-qr.${ext}`;
+    }
+    default:
+      return `qr-code.${ext}`;
+  }
+}
+
+/**
+ * Sanitize an SVG text string to remove scripts and active event handlers
+ * Prevents XSS when rendering user-uploaded SVGs
+ */
+export function sanitizeSvgString(svgText: string): string {
+  return svgText
+    // Remove script tags and their contents
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    // Remove inline event handlers (onload, onerror, onclick, etc.)
+    .replace(/\s+on[a-z]+\s*=\s*(['\"]).*?\1/gi, '')
+    .replace(/\s+on[a-z]+\s*=\s*[^ >]+/gi, '')
+    // Remove javascript: pseudo-protocol
+    .replace(/href\s*=\s*['"]\s*javascript:[^'"]*['"]/gi, 'href=""');
+}
+
+/**
+ * Validate imported configuration JSON to ensure integrity and prevent prototype pollution
+ */
+export function validateImportedConfig(json: unknown): ExportedQRConfig | null {
+  if (!json || typeof json !== 'object' || Array.isArray(json)) {
+    return null;
+  }
+
+  const obj = json as Record<string, unknown>;
+
+  const validTypes: QRType[] = ['url', 'text', 'email', 'phone', 'wifi'];
+  const type = obj.type as QRType;
+  if (!validTypes.includes(type)) {
+    return null;
+  }
+
+  const rawData = obj.data as Partial<QRDataState> | undefined;
+  const rawConfig = obj.config as Partial<QRDesignConfig> | undefined;
+
+  if (!rawData || !rawConfig) {
+    return null;
+  }
+
+  // Validate colors
+  const hexRegex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+  const fgColor = typeof rawConfig.fgColor === 'string' && hexRegex.test(rawConfig.fgColor)
+    ? rawConfig.fgColor
+    : '#000000';
+  const bgColor = typeof rawConfig.bgColor === 'string' && hexRegex.test(rawConfig.bgColor)
+    ? rawConfig.bgColor
+    : '#FFFFFF';
+
+  const validSizes = [256, 512, 1024, 2048];
+  const size = validSizes.includes(Number(rawConfig.size)) ? (Number(rawConfig.size) as 256 | 512 | 1024 | 2048) : 1024;
+
+  const validEcc = ['L', 'M', 'Q', 'H'];
+  const errorCorrectionLevel = validEcc.includes(String(rawConfig.errorCorrectionLevel))
+    ? (rawConfig.errorCorrectionLevel as 'L' | 'M' | 'Q' | 'H')
+    : 'M';
+
+  const sanitizedConfig: QRDesignConfig = {
+    fgColor,
+    bgColor,
+    size,
+    errorCorrectionLevel,
+    includeLogo: Boolean(rawConfig.includeLogo),
+    logoUrl: typeof rawConfig.logoUrl === 'string' && rawConfig.logoUrl.startsWith('data:image/')
+      ? rawConfig.logoUrl
+      : null,
+    logoSizeRatio: typeof rawConfig.logoSizeRatio === 'number'
+      ? Math.max(0.14, Math.min(0.25, rawConfig.logoSizeRatio))
+      : 0.2,
+    margin: typeof rawConfig.margin === 'number' ? Math.max(0, Math.min(8, rawConfig.margin)) : 2,
+  };
+
+  const sanitizedData: QRDataState = {
+    type,
+    url: { url: String(rawData.url?.url || '') },
+    text: { text: String(rawData.text?.text || '') },
+    email: {
+      email: String(rawData.email?.email || ''),
+      subject: String(rawData.email?.subject || ''),
+      body: String(rawData.email?.body || ''),
+    },
+    phone: { phone: String(rawData.phone?.phone || '') },
+    wifi: {
+      ssid: String(rawData.wifi?.ssid || ''),
+      password: String(rawData.wifi?.password || ''),
+      encryption: rawData.wifi?.encryption === 'WEP' || rawData.wifi?.encryption === 'nopass'
+        ? rawData.wifi.encryption
+        : 'WPA',
+      hidden: Boolean(rawData.wifi?.hidden),
+    },
+  };
+
+  return {
+    version: 1,
+    type,
+    data: sanitizedData,
+    config: sanitizedConfig,
+    exportedAt: typeof obj.exportedAt === 'string' ? obj.exportedAt : new Date().toISOString(),
+  };
 }

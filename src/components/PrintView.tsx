@@ -36,12 +36,12 @@ export const PrintView: React.FC<PrintViewProps> = ({
         </p>
 
         {/* Crisp QR Canvas for Printing */}
-        <div className="p-4 border border-gray-300 rounded-2xl bg-white shadow-none mb-6">
+        <div className="w-[280px] h-[280px] p-3 border border-gray-300 rounded-2xl bg-white shadow-none mb-6 flex items-center justify-center">
           <canvas
             ref={canvasRef}
             width={600}
             height={600}
-            className="w-[280px] h-[280px] object-contain"
+            className="w-full h-full object-contain block"
           />
         </div>
 

@@ -53,10 +53,22 @@ export interface HistoryItem {
   id: string;
   type: QRType;
   title: string;
+  customName?: string;
   payload: string;
   displaySummary: string;
   createdAt: number;
   config: QRDesignConfig;
+  hasLogo?: boolean;
+}
+
+export type QRPurposePreset = 'website' | 'print' | 'poster' | 'social';
+
+export interface ExportedQRConfig {
+  version: 1;
+  type: QRType;
+  data: QRDataState;
+  config: QRDesignConfig;
+  exportedAt: string;
 }
 
 export type Theme = 'light' | 'dark' | 'system';

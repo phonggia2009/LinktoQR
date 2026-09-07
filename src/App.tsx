@@ -8,19 +8,22 @@ import {
 import {
   getStoredHistory,
   saveHistoryItem,
+  renameStoredHistoryItem,
   deleteStoredHistoryItem,
   clearStoredHistory,
   getStoredTheme,
   setStoredTheme,
 } from './lib/storage';
-import { generatePayload, getPayloadSummary } from './lib/qr';
-import { ToastProvider } from './components/Toast';
+import { generatePayload, getPayloadSummary, generateQRPngBlob, generateQRSVG } from './lib/qr';
+import { generateSmartFilename } from './lib/validation';
+import { ToastProvider, useToast } from './components/Toast';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
 import { QRGenerator } from './components/QRGenerator';
 import { QRHistory } from './components/QRHistory';
 import { GuideSection } from './components/GuideSection';
 import { PrivacySection } from './components/PrivacySection';
+import { FAQSection } from './components/FAQSection';
 import { Footer } from './components/Footer';
 import { PrintView } from './components/PrintView';
 
@@ -45,6 +48,7 @@ const INITIAL_DATA_STATE: QRDataState = {
 };
 
 export const AppContent: React.FC = () => {
+  const { showToast } = useToast();
   const [theme, setTheme] = useState<Theme>(() => getStoredTheme());
   const [dataState, setDataState] = useState<QRDataState>(INITIAL_DATA_STATE);
   const [config, setConfig] = useState<QRDesignConfig>(INITIAL_CONFIG);
@@ -98,6 +102,12 @@ export const AppContent: React.FC = () => {
     setHistory(updated);
   }, []);
 
+  // Rename history item
+  const handleRenameHistory = useCallback((id: string, newTitle: string) => {
+    const updated = renameStoredHistoryItem(id, newTitle);
+    setHistory(updated);
+  }, []);
+
   // Delete single history item
   const handleDeleteHistory = useCallback((id: string) => {
     const updated = deleteStoredHistoryItem(id);
@@ -112,7 +122,6 @@ export const AppContent: React.FC = () => {
 
   // Reload history item back into the editor
   const handleSelectHistory = useCallback((item: HistoryItem) => {
-    // Determine which type it is and fill data state
     const newDataState = { ...INITIAL_DATA_STATE, type: item.type };
 
     if (item.type === 'url') {
@@ -122,7 +131,6 @@ export const AppContent: React.FC = () => {
     } else if (item.type === 'phone') {
       newDataState.phone = { phone: item.payload.replace(/^tel:/i, '') };
     } else if (item.type === 'wifi') {
-      // Parse basic Wi-Fi payload: WIFI:S:ssid;T:WPA;P:password;;
       const ssidMatch = item.payload.match(/S:([^;]+)/);
       const typeMatch = item.payload.match(/T:([^;]+)/);
       const passMatch = item.payload.match(/P:([^;]+)/);
@@ -157,12 +165,86 @@ export const AppContent: React.FC = () => {
     window.print();
   }, []);
 
-  // Payload for print view
+  // Compute live payload string
   const currentPayload = useMemo(() => generatePayload(dataState), [dataState]);
   const { title: currentTitle, summary: currentSummary } = useMemo(
     () => getPayloadSummary(dataState),
     [dataState]
   );
+
+  // Global Keyboard Shortcuts (Requirement 14)
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const isCmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+
+      // Escape -> close any open modals
+      if (e.key === 'Escape') {
+        // Modal will close automatically if listeners are present
+        return;
+      }
+
+      // Ctrl/Cmd + Enter -> Scroll to generator
+      if (isCmdOrCtrl && e.key === 'Enter') {
+        e.preventDefault();
+        handleScrollToGenerator();
+        showToast('Đã di chuyển tới bảng tạo QR', 'info');
+        return;
+      }
+
+      // Ctrl/Cmd + Shift + S -> Download SVG
+      if (isCmdOrCtrl && e.shiftKey && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        if (!currentPayload.trim()) {
+          showToast('Chưa có nội dung để tải SVG', 'warning');
+          return;
+        }
+        try {
+          const svg = await generateQRSVG(currentPayload, config);
+          const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = generateSmartFilename(dataState, 'svg');
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          showToast('Đã tải QR thành công.', 'success');
+        } catch {
+          showToast('Lỗi khi tải SVG', 'error');
+        }
+        return;
+      }
+
+      // Ctrl/Cmd + S -> Download PNG (override browser save page)
+      if (isCmdOrCtrl && !e.shiftKey && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        if (!currentPayload.trim()) {
+          showToast('Chưa có nội dung để tải PNG', 'warning');
+          return;
+        }
+        try {
+          const blob = await generateQRPngBlob(currentPayload, config, 1024);
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = generateSmartFilename(dataState, 'png');
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          showToast('Đã tải QR thành công.', 'success');
+        } catch {
+          showToast('Lỗi khi tải PNG', 'error');
+        }
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentPayload, config, dataState, showToast]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
@@ -191,6 +273,7 @@ export const AppContent: React.FC = () => {
         <QRHistory
           items={history}
           onSelect={handleSelectHistory}
+          onRename={handleRenameHistory}
           onDelete={handleDeleteHistory}
           onClearAll={handleClearHistory}
         />
@@ -198,6 +281,8 @@ export const AppContent: React.FC = () => {
         <GuideSection />
 
         <PrivacySection />
+
+        <FAQSection />
       </main>
 
       {/* Footer */}
